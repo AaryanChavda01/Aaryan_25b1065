@@ -1,0 +1,63 @@
+# Regime-Shift Asset Allocation — configuration
+#
+# All knobs the pipeline needs live here so runs are reproducible and
+# nothing is hard-coded deep inside src/. Override any of these on the
+# command line, e.g.:
+#   python scripts/run_pipeline.py --config config.yaml --start 2012-01-01
+
+data:
+  # yfinance tickers. Defaults are NSE-flavoured per the project brief
+  # (equity / bond-proxy / gold), plus India VIX as the fear gauge.
+  # Swap these for whatever three-asset-class set you want to trade.
+  tickers:
+    equity: "^NSEI"        # Nifty 50 index
+    bond: "LIQUIDBEES.NS"  # money-market / low-duration ETF, stands in for "bonds"
+    gold: "GOLDBEES.NS"    # Nippon India Gold ETF
+  vix_ticker: "^INDIAVIX"
+  start: "2010-01-01"
+  end: null                # null => today
+  cache_dir: "data_cache"
+
+features:
+  momentum_windows: [5, 21, 63]     # ~1 week, 1 month, 1 quarter (trading days)
+  volatility_windows: [21, 63]      # rolling std of returns
+  vix_zscore_window: 252            # only used to *describe* VIX, never for training targets
+
+regime:
+  n_states: 3
+  covariance_type: "diag"
+  n_iter: 200
+  random_state: 42
+  feature_columns: ["log_ret", "vol_21d", "mom_21d"]
+
+walk_forward:
+  initial_train_days: 756   # ~3 trading years before the first test fold
+  test_days: 63              # ~1 quarter per fold
+  min_holding_days: 5        # dampens whipsaw rebalancing on regime flicker
+  lookback_days: 126          # trailing window used to estimate mu/covariance at each rebalance
+
+optimization:
+  objectives:
+    Bull: "max_sharpe"
+    Bear: "min_vol_target_return"
+    Crisis: "min_vol"
+  bear_target_annual_return: 0.03
+  max_weight: 0.70            # per-asset cap, keeps the optimizer from going all-in
+  min_weight: 0.0             # long-only
+  risk_free_rate: 0.06        # annualized, used in Sharpe-style objectives (INR short rate proxy)
+
+costs:
+  transaction_cost_bps: 7.5   # midpoint of the 5-10bps range in the brief
+
+benchmarks:
+  static_6040:
+    equity: 0.6
+    bond: 0.4
+    gold: 0.0
+  equal_weight:
+    equity: 0.3333
+    bond: 0.3333
+    gold: 0.3334
+
+output:
+  dir: "outputs"
